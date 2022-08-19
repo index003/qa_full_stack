@@ -302,6 +302,8 @@ class TestLogin:
     def test_login(self):
         login_page = LoginPage(driver=self.driver)
         login_page.login()
-
+        
+if __name__ == '__main__':
+    pytest.main()
 ```
 

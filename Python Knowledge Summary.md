@@ -1201,6 +1201,261 @@ for filename in filenames:
 
 ```
 
+## 第十一部分 连接数据库
+
+```python
+#########
+# db_config.py
+# db 数据库配置信息
+def db_base_info(env, db):
+    db_info = {
+        # fat1 数据库连接信息
+        'fat1': {
+            'host': '172.16.4.11',
+            'port': 3306,
+            'user': 'wuchangzheng',
+            'passwd': 'JnbbSQj4kW6fLFDfZxlg',
+            'db': db,
+            'charset': 'utf8'
+        },
+        # game1 数据库连接信息
+        'game1': {
+            'host': '172.16.4.81',
+            'port': 3306,
+            'user': 'wuchangzheng',
+            'passwd': 'JnbbSQj4kW6fLFDfZxlg',
+            'db': db,
+            'charset': 'utf8'
+        },
+        # pre 数据库连接信息
+        'pre': {
+            'host': '172.16.4.41',
+            'port': 3306,
+            'user': 'test',
+            'passwd': 'JnbbSQj4kW6fLFDfZxlg',
+            'db': db,
+            'charset': 'utf8'
+        }
+    }
+    return db_info[env]
+
+
+def get_lottery_info():
+    sport_lottery_db = db_base_info(env_config.env, 'sport-lottery')
+    return sport_lottery_db
+
+
+def get_data_info():
+    sport_data_db = db_base_info(env_config.env, 'sport-data')
+    return sport_data_db
+
+
+def get_platform_info():
+    platform_db = db_base_info(env_config.env, 'db_platform')
+    return platform_db
+
+
+def get_score_info():
+    score_db = db_base_info(env_config.env, 'sport_score')
+    return score_db
+
+#########
+# db_core.py
+import pymysql
+from common.config import db_config
+
+
+class DatabaseRepository(object):
+
+    def __init__(self, conn_info):
+        self.conn_info = conn_info
+
+    # 连接数据库
+    def get_db_connect(self):
+        connections = pymysql.connect(**self.conn_info)
+        return connections
+
+    # 增删改数据
+    def modify_execute(self, sql):
+        connection = self.get_db_connect()
+        cursor = connection.cursor()
+        print(sql)
+        cursor.execute(sql)
+        connection.commit()
+        print(f"Affected rows: {cursor.rowcount}")
+        cursor.close()
+        connection.close()
+
+    # 批量增删改
+    def modify_execute_list(self, sqls):
+        connection = self.get_db_connect()
+        cursor = connection.cursor()
+        for sql in sqls:
+            cursor.execute(sql)
+            connection.commit()
+            print(f"Affected rows: {cursor.rowcount}")
+        cursor.close()
+        connection.close()
+
+    # 查询数据
+    def query_execute(self, sql, *params):
+        connection = self.get_db_connect()
+        cursor = connection.cursor()
+        cursor.execute(sql, [*params])
+        result = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        return result
+
+
+def get_lottery_db():
+    return DatabaseRepository(db_config.get_lottery_info())
+
+#########
+# data.py
+from common.data.query_core import db_base
+
+
+# 根据match_id查询指定赛事的信息
+def query_match_info_by_id(match_id):
+    sql_query = "select * from sport_match_info where id = %s"
+    query_result = db_base.get_lottery_db().query_execute(sql_query, match_id)
+    return query_result
+
+
+# 根据category_id获取类别信息
+def query_category_info_by_id(category_id):
+    sql_query = "select * from sport_category_info where id = %s"
+    query_result = db_base.get_lottery_db().query_execute(sql_query, category_id)
+    return query_result
+
+
+# 根据league_id获取联赛基础信息
+def query_league_info_by_league_id(league_id):
+    sql_query = "select * from sport_league_info where id = %s"
+    query_result = db_base.get_lottery_db().query_execute(sql_query, league_id)
+    return query_result
+
+
+# 某个类别下的联赛数据
+def query_league_info_by_category_id(category_id):
+    sql = ("select * from sport_league_info "
+           "where category_id = %s and available=0")
+    league_ids = db_base.get_lottery_db().query_execute(sql, category_id)
+    return league_ids
+
+#########
+# data_api.py
+import json
+
+from common.data import sport_data_sql
+from common.utils import std_out
+
+
+# 返回赛事相关信息
+def get_match_info_by_id(match_id, info):
+    match_info = sport_data_sql.query_match_info_by_id(match_id)
+    if info == 'fixture_id':
+        fixtureId = std_out.format_sql_result(match_info, [10])
+        return fixtureId[0]
+    elif info == 'category_id':
+        category_id = std_out.format_sql_result(match_info, [1])
+        return category_id[0]
+    elif info == 'league_id':
+        league_id = std_out.format_sql_result(match_info, [2])
+        return league_id[0]
+    elif info == 'match_time':
+        match_time = std_out.format_sql_result(match_info, [11])
+        return str(match_time[0])
+    elif info == 'team_id':
+        team_ids_result = std_out.format_sql_result(match_info, [7, 8])
+        team_ids = team_ids_result[0]
+        return team_ids
+    else:
+        print("get_match_info_by_id Wrong")
+
+
+# 返回category_code
+def get_category_info_by_id(match_id, info):
+    category_id = get_match_info_by_id(match_id, 'category_id')
+    category_info = sport_data_sql.query_category_info_by_id(category_id)
+    if info == 'category_code':
+        category_code = std_out.format_sql_result(category_info, [2])
+        return category_code[0]
+    elif info == 'source_category_id':
+        source_category_id = std_out.format_sql_result(category_info, [4])
+        return source_category_id[0]
+    else:
+        print("get_category_info_by_id Wrong")
+
+
+# 根据league_id获取联赛的源id
+def get_league_source_id_by_id(match_id):
+    league_id = get_match_info_by_id(match_id, 'league_id')
+    league_info = sport_data_sql.query_league_info_by_league_id(league_id)
+    source_league_id = std_out.format_sql_result(league_info, [6])
+    return source_league_id[0]
+
+#########
+# util.py
+# 处理sql查询的结果，放到列表中
+import decimal
+
+
+# 将sql结果转换为列表
+def format_sql_result(sql_results, element_poses):
+    final_result = []
+    if len(element_poses) == 1:
+        for sql_result in sql_results:
+            element = sql_result[element_poses[0]]
+            final_result.append(element)
+    elif len(element_poses) > 1:
+        for sql_result in sql_results:
+            elements = []
+            for element_pos in element_poses:
+                element = sql_result[element_pos]
+                elements.append(element)
+            final_result.append(elements)
+    else:
+        print("Wrong")
+    return final_result
+
+
+# 将decimal.Decimal数据类型的值，转换为字符
+def format_decimal(sql_result):
+    rep = []
+    for row in sql_result:
+        if type(row) is list:
+            list_x = []
+            for data in row:
+                if data is None:
+                    list_x.append(' ')
+                elif type(data) is decimal.Decimal:
+                    list_x.append(float(str(data.quantize(decimal.Decimal('0.000')))))
+                else:
+                    list_x.append(data)
+            rep.append(list_x)
+        else:
+            rep.append(float(str(row.quantize(decimal.Decimal('0.000')))))
+    return rep
+
+
+# 指定浮点数保留的小数点位数，默认为小数点后12位
+def format_float(float_num, length=12):
+    format_num = str(float_num).split('.')[0] + '.' + str(float_num).split('.')[1][:length]
+    return float(format_num)
+
+
+# 格式化输出
+def format_output(some_list):
+    for i in range(len(some_list)):
+        print(some_list[i], end=' | ')
+        if(i+1) % 10 == 0:
+            print("\n")
+    print("\n")
+    print("=====================================")
+```
+
 
 
 
